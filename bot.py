@@ -20,10 +20,16 @@ print(f"PEXELS_API_KEY length: {len(PEXELS_API_KEY) if PEXELS_API_KEY else 0}")
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-3.6-flash')
 
+# Расширенный список RSS источников
 RSS_FEEDS = [
     'https://eda.ru/rss',
     'https://www.gastronom.ru/rss',
     'https://t-j.ru/tag/food/feed/',
+    'https://www.edimdoma.ru/rss',
+    'https://povar.ru/rss',
+    'https://www.1001eda.com/feed',
+    'https://webspoon.ru/feed',
+    'https://food.ru/rss',
 ]
 
 def get_news():
@@ -33,7 +39,7 @@ def get_news():
     for feed_url in RSS_FEEDS:
         try:
             feed = feedparser.parse(feed_url)
-            print(f"  OK {feed_url}: found {len(feed.entries)} items")
+            print(f"  {'OK' if len(feed.entries) > 0 else 'WARN'} {feed_url}: found {len(feed.entries)} items")
             
             for entry in feed.entries[:2]:
                 image_url = None
