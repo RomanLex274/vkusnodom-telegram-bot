@@ -8,6 +8,7 @@ from datetime import datetime
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHANNEL = os.getenv('TELEGRAM_CHANNEL')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+PEXELS_API_KEY = os.getenv('PEXELS_API_KEY')
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-3.6-flash')
@@ -28,14 +29,12 @@ def get_news():
             print(f"  OK {feed_url}: found {len(feed.entries)} items")
             
             for entry in feed.entries[:2]:
-                # Пытаемся получить картинку из RSS
                 image_url = None
                 if hasattr(entry, 'media_content') and entry.media_content:
                     image_url = entry.media_content[0].get('url')
                 elif hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
                     image_url = entry.media_thumbnail[0].get('url')
                 elif hasattr(entry, 'summary'):
-                    # Ищем картинку в summary
                     img_match = re.search(r'<img[^>]+src="([^"]+)"', entry.summary)
                     if img_match:
                         image_url = img_match.group(1)
@@ -105,29 +104,54 @@ def get_image_for_post(news_item):
     """Get image URL for the post"""
     print("Getting image...")
     
-    # Если есть картинка в RSS — используем её
+    # 1. Если есть картинка в RSS — используем её
     if news_item.get('image'):
         print(f"  OK Using image from RSS: {news_item['image']}")
         return news_item['image']
     
-    # Иначе генерируем через Pollinations.ai (бесплатно)
+    # 2. Ищем фото на Pexels (реальные фото еды)
+    if PEXELS_API_KEY:
+        try:
+            # Используем Gemini для перевода названия на английский
+            title = news_item['title'][:80]
+            translate_prompt = f"Translate this Russian dish name to English (just 2-3 words, no explanations): {title}"
+            translate_response = model.generate_content(translate_prompt)
+            english_query = translate_response.text.strip().replace(' ', ',')
+            
+            print(f"  Searching Pexels for: {english_query}")
+            
+            headers = {'Authorization': PEXELS_API_KEY}
+            url = f"https://api.pexels.com/v1/search?query={english_query}+food&per_page=1&orientation=landscape"
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            result = response.json()
+            
+            if result.get('photos') and len(result['photos']) > 0:
+                photo = result['photos'][0]
+                image_url = photo['src']['medium']
+                print(f"  OK Found on Pexels: {image_url}")
+                return image_url
+            else:
+                print("  No photos found on Pexels")
+        except Exception as e:
+            print(f"  Error with Pexels: {e}")
+    
+    # 3. Fallback: генерируем через Pollinations.ai
     try:
         title = news_item['title'][:50]
-        image_prompt = f"delicious food {title}".replace(' ', '%20')
-        image_url = f"https://image.pollinations.ai/prompt/{image_prompt}?width=800&height=600&nologo=true"
+        image_prompt = f"professional food photography, delicious dish, {title}, top view, natural lighting, high quality, 4k, restaurant style".replace(' ', '%20')
+        image_url = f"https://image.pollinations.ai/prompt/{image_prompt}?width=800&height=600&nologo=true&seed=42"
         print(f"  OK Generated image: {image_url}")
         return image_url
     except Exception as e:
-        print(f"  Error getting image: {e}")
+        print(f"  Error generating image: {e}")
         return None
 
 def publish_to_telegram(post_text, news_link, image_url=None):
     print("Publishing to Telegram...")
     
-    # Добавляем ссылку в текст
     full_caption = f"{post_text}\n\n🔗 Подробнее: {news_link}"
     
-    # Если есть картинка — отправляем фото с caption
     if image_url:
         photo_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
         photo_data = {
@@ -146,7 +170,6 @@ def publish_to_telegram(post_text, news_link, image_url=None):
                 return True
             else:
                 print(f"Error publishing photo: {result}")
-                # Если не получилось с фото — пробуем просто текст
                 print("Trying to send text only...")
                 return send_text_only(full_caption)
                 
@@ -154,7 +177,6 @@ def publish_to_telegram(post_text, news_link, image_url=None):
             print(f"Error sending photo: {e}")
             return send_text_only(full_caption)
     else:
-        # Если нет картинки — отправляем просто текст
         return send_text_only(full_caption)
 
 def send_text_only(text):
@@ -192,6 +214,7 @@ def main():
         print(f"  TELEGRAM_BOT_TOKEN: {'OK' if TELEGRAM_BOT_TOKEN else 'X'}")
         print(f"  TELEGRAM_CHANNEL: {'OK' if TELEGRAM_CHANNEL else 'X'}")
         print(f"  GEMINI_API_KEY: {'OK' if GEMINI_API_KEY else 'X'}")
+        print(f"  PEXELS_API_KEY: {'OK' if PEXELS_API_KEY else 'X (optional)'}")
         return
     
     news_list = get_news()
@@ -209,10 +232,8 @@ def main():
         print("\nFailed to create post.")
         return
     
-    # Получаем картинку
     image_url = get_image_for_post(news)
     
-    # Публикуем
     success = publish_to_telegram(post, news['link'], image_url)
     
     if success:
