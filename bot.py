@@ -10,6 +10,13 @@ TELEGRAM_CHANNEL = os.getenv('TELEGRAM_CHANNEL')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 PEXELS_API_KEY = os.getenv('PEXELS_API_KEY')
 
+# Отладка: выводим, какие переменные загружены
+print(f"TELEGRAM_BOT_TOKEN: {'OK' if TELEGRAM_BOT_TOKEN else 'MISSING'}")
+print(f"TELEGRAM_CHANNEL: {'OK' if TELEGRAM_CHANNEL else 'MISSING'}")
+print(f"GEMINI_API_KEY: {'OK' if GEMINI_API_KEY else 'MISSING'}")
+print(f"PEXELS_API_KEY: {'OK' if PEXELS_API_KEY else 'MISSING'}")
+print(f"PEXELS_API_KEY length: {len(PEXELS_API_KEY) if PEXELS_API_KEY else 0}")
+
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-3.6-flash')
 
@@ -76,7 +83,7 @@ POST STRUCTURE (use exact formatting):
 3. 🔥 **Main feature:** (bold heading)
    Description (1-2 sentences)
 
-4.  **Lifehack:** (bold heading)
+4. 💡 **Lifehack:** (bold heading)
    Practical tip (2-3 sentences)
 
 5. Question to audience with emoji
@@ -110,8 +117,12 @@ def get_image_for_post(news_item):
         return news_item['image']
     
     # 2. Ищем фото на Pexels (реальные фото еды)
-    if PEXELS_API_KEY:
+    print(f"  Checking PEXELS_API_KEY: {'OK' if PEXELS_API_KEY else 'MISSING'}")
+    
+    if PEXELS_API_KEY and len(PEXELS_API_KEY) > 10:
         try:
+            print("  Attempting to use Pexels API...")
+            
             # Используем Gemini для перевода названия на английский
             title = news_item['title'][:80]
             translate_prompt = f"Translate this Russian dish name to English (just 2-3 words, no explanations): {title}"
@@ -124,6 +135,8 @@ def get_image_for_post(news_item):
             url = f"https://api.pexels.com/v1/search?query={english_query}+food&per_page=1&orientation=landscape"
             
             response = requests.get(url, headers=headers, timeout=10)
+            print(f"  Pexels response status: {response.status_code}")
+            
             result = response.json()
             
             if result.get('photos') and len(result['photos']) > 0:
@@ -132,15 +145,21 @@ def get_image_for_post(news_item):
                 print(f"  OK Found on Pexels: {image_url}")
                 return image_url
             else:
-                print("  No photos found on Pexels")
+                print(f"  No photos found on Pexels. Response: {result}")
         except Exception as e:
             print(f"  Error with Pexels: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("  PEXELS_API_KEY is missing or too short, skipping Pexels")
     
-    # 3. Fallback: генерируем через Pollinations.ai
+    # 3. Fallback: генерируем через Pollinations.ai (улучшенное качество)
     try:
+        print("  Using Pollinations.ai as fallback...")
         title = news_item['title'][:50]
-        image_prompt = f"professional food photography, delicious dish, {title}, top view, natural lighting, high quality, 4k, restaurant style".replace(' ', '%20')
-        image_url = f"https://image.pollinations.ai/prompt/{image_prompt}?width=800&height=600&nologo=true&seed=42"
+        # Улучшенный промпт для лучшего качества
+        image_prompt = f"professional food photography, delicious dish close-up, {title}, studio lighting, ultra high quality, 8k resolution, sharp focus, restaurant plating, gourmet, detailed".replace(' ', '%20')
+        image_url = f"https://image.pollinations.ai/prompt/{image_prompt}?width=1200&height=900&nologo=true&seed=42&enhance=true"
         print(f"  OK Generated image: {image_url}")
         return image_url
     except Exception as e:
