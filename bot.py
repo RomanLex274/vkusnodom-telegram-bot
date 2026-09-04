@@ -157,7 +157,6 @@ def get_image_for_post(news_item):
     try:
         print("  Using Pollinations.ai as fallback...")
         title = news_item['title'][:50]
-        # Улучшенный промпт для лучшего качества
         image_prompt = f"professional food photography, delicious dish close-up, {title}, studio lighting, ultra high quality, 8k resolution, sharp focus, restaurant plating, gourmet, detailed".replace(' ', '%20')
         image_url = f"https://image.pollinations.ai/prompt/{image_prompt}?width=1200&height=900&nologo=true&seed=42&enhance=true"
         print(f"  OK Generated image: {image_url}")
@@ -169,9 +168,17 @@ def get_image_for_post(news_item):
 def publish_to_telegram(post_text, news_link, image_url=None):
     print("Publishing to Telegram...")
     
-    full_caption = f"{post_text}\n\n🔗 Подробнее: {news_link}"
+    full_caption = f"{post_text}\n\n Подробнее: {news_link}"
     
     if image_url:
+        # Telegram ограничивает caption до 1024 символов
+        # Обрезаем до 1000, чтобы точно влезло
+        if len(full_caption) > 1000:
+            max_text_len = 1000 - len(f"\n\n🔗 Подробнее: {news_link}")
+            if max_text_len > 100:
+                post_text = post_text[:max_text_len] + "..."
+            full_caption = f"{post_text}\n\n🔗 Подробнее: {news_link}"
+        
         photo_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
         photo_data = {
             'chat_id': TELEGRAM_CHANNEL,
